@@ -44,6 +44,6 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 10.10.2025 | M, R, V | 1h | discussion about project and presentation |
 | 15.10.2025 | Valtteri | 1h | Writing presentation slides |
 | 15.10.2025 | Mikael | ?h | Writing presentation slides |
-| 17.10.2025 | M, R, V | Had a meeting about presentation and getting familier with hugging face |
-| 20.10.2025 | R, V | testing hugging face tools and models |
+| 17.10.2025 | M, R, V | 1h |Had a meeting about presentation and getting familier with hugging face |
+| 20.10.2025 | R, V | 2h | testing hugging face tools and models |
 | 21.10.2025 | R, V | ? |
