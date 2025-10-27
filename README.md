@@ -47,7 +47,8 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 17.10.2025 | M, R, V | 1h |Had a meeting about presentation and getting familier with hugging face |
 | 20.10.2025 | R, V | 2.5h | testing hugging face tools and models |
 | 21.10.2025 | R, V | 3h | testing hugging face modules and testing model AL model chaining thorugh python |
-| 22.10.2025 | R, V | 3h | tested whisper AI model with audio files (success) |
+| 22.10.2025 | R, V | 3h | tested whisper AI model with audio files (success), and made the mindmap / AI neural map |
+| 25.10.2025 | R    | 1.5h | Prepping of the midterm presentation | 
 | 26.10.2025 | R, V | 3h | Finished writing the midterm presentation |
 | 27.10.2025 | R, V | 2h | Midterm presentation                      |
 
