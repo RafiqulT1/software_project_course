@@ -43,7 +43,8 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 7.10.2025 | Rafiqul | 2h | Gathering knowledge about the project subject
 | 10.10.2025 | M, R, V | 1h | discussion about project and presentation |
 | 15.10.2025 | Valtteri | 1h | Writing presentation slides |
-| 15.10.2025 | Mikael | ?h | Writing presentation slides |
+| 15.10.2025 | Mikael | 4h | Writing presentation slides and getting familiar with local LLMs ollama/llama.cpp |
+| 17.10.2025 | Mikael | 2h | Working on llama.cpp |
 | 17.10.2025 | M, R, V | 1h |Had a meeting about presentation and getting familier with hugging face |
 | 20.10.2025 | R, V | 2.5h | testing hugging face tools and models |
 | 21.10.2025 | R, V | 3h | testing hugging face modules and testing model AL model chaining thorugh python |
