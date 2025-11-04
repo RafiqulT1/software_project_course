@@ -9,6 +9,7 @@ import os
 import glob
 import soundfile as sf
 import librosa
+import win32com.client
 
 # Create temp directory for audio files
 TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_audio")
@@ -113,6 +114,43 @@ def speech_to_text(audio_file, whisper_model):
         print(f"Error in speech recognition: {str(e)}")
         return None
 
+def initialize_tts():
+    """
+    Initialize Windows SAPI text-to-speech engine
+    """
+    try:
+        print("[DEBUG] Initializing Windows SAPI...")
+        speaker = win32com.client.Dispatch("SAPI.SpVoice")
+        # Optional: Adjust voice settings
+        speaker.Volume = 100  # 0 to 100
+        speaker.Rate = 0     # -10 to 10
+        print("[DEBUG] SAPI initialized successfully")
+        return speaker
+    except Exception as e:
+        print(f"[DEBUG] Error initializing SAPI: {str(e)}")
+        return None
+
+def speak_text(speaker, text):
+    """
+    Convert text to speech using Windows SAPI (synchronous)
+    """
+    print(f"[DEBUG] Starting speak_text with SAPI: {speaker is not None}")
+    
+    if speaker is None:
+        print("[DEBUG] SAPI is None, reinitializing...")
+        speaker = initialize_tts()
+    
+    try:
+        print("[DEBUG] Attempting to speak...")
+        print(f"[DEBUG] Text length: {len(text)} characters")
+        speaker.Speak(text)  # Removed the async flag (1)
+        print("[DEBUG] Speech completed")
+        return speaker
+    except Exception as e:
+        print(f"[DEBUG] Error in text-to-speech: {str(e)}")
+        print("[DEBUG] Attempting to reinitialize SAPI...")
+        return initialize_tts()
+
 def voice_chat_conversation(model="llama2"):
     """
     Start an interactive voice chat session with the model
@@ -120,6 +158,10 @@ def voice_chat_conversation(model="llama2"):
     print(f"Starting voice chat with {model}")
     print("Press Ctrl+C to exit")
     messages = []
+    
+    print("[DEBUG] Setting up initial TTS engine")
+    tts_engine = initialize_tts()
+    print(f"[DEBUG] Initial TTS engine state: {tts_engine is not None}")
     
     # Cleanup old recordings and load Whisper model
     cleanup_old_recordings()
@@ -149,9 +191,14 @@ def voice_chat_conversation(model="llama2"):
                         model=model,
                         messages=[*messages, {'role': 'user', 'content': text_input}]
                     )
+                    assistant_response = response['message']['content']
                     messages.append({'role': 'user', 'content': text_input})
-                    messages.append({'role': 'assistant', 'content': response['message']['content']})
-                    print(f"\nAssistant: {response['message']['content']}")
+                    messages.append({'role': 'assistant', 'content': assistant_response})
+                    
+                    print(f"\nAssistant: {assistant_response}")
+                    print(f"[DEBUG] Current TTS engine state before speaking: {tts_engine is not None}")
+                    tts_engine = speak_text(tts_engine, assistant_response)
+                    print(f"[DEBUG] TTS engine state after speaking: {tts_engine is not None}")
                 else:
                     print("No text was transcribed from the audio")
                     
