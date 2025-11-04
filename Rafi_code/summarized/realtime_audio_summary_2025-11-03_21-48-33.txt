@@ -1,0 +1,1 @@
+Right now I'm doing some python coding using chat gtp and so far it is working fine. I'm trying to get the code to be running with  A real time voice input, right now it has taken 15 seconds, audio chunks, I don't know how to stop this one.
