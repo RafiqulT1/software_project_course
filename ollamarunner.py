@@ -1,6 +1,8 @@
 import ollama
 import sys
 
+#REF: https://github.com/ollama/ollama-python
+
 def check_ollama_status():
     """
     Check if Ollama is running and has models installed
