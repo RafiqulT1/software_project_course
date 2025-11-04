@@ -52,4 +52,5 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 25.10.2025 | R    | 1.5h | Prepping of the midterm presentation | 
 | 26.10.2025 | R, V | 3h | Finished writing the midterm presentation |
 | 27.10.2025 | R, V | 2h | Midterm presentation                      |
+| 03.11.2025 | R | 2.5h | Worked on whisper & bart AI wrote python code (working with realtime voice input |
 
