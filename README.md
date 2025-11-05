@@ -70,4 +70,8 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 26.10.2025 | R, V | 3h | Finished writing the midterm presentation |
 | 27.10.2025 | R, V | 2h | Midterm presentation                      |
 | 03.11.2025 | R | 3h | Worked on whisper & bart AI wrote python code (working with realtime voice input) |
+| 04.11.2025 | M, R, V | 0.5h | Sync call |
+| 04.11.2025 | M | 2h | Working on python script (ollamarunner.py) |
+| 05.11.2025 | M, R, V | 1h | Sync call |
+| 05.11.2025 | M | 2h | Working on python script (ollamarunner.py) |
 
