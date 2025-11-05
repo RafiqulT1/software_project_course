@@ -1,6 +1,23 @@
 # Software_project_course
 ## Finnish Robot Dialog
 
+### TO DO
+- Test LLM
+- LLM with python
+- LLM + Realtime voice input
+- LLM + whisper AI useing python + Realtime voice input
+- LLM + whisper + bart AI useing python + Realtime voice input
+- test LLM + whisper + bart AI + Realtime voice input
+- Test questions to LLM
+- Test LLM output
+- Test Whisper AI output
+- Test bart AI ouput
+- check test result + think about ways to make it better
+
+- Ask LLM to remind about "What did we talk about last night"
+- check if it can retrive the data from the correct folder and if the output is correct
+- and more.........
+
 ### Ominaisuudet
 - kohderyhmänä esim vanhukset
 - toimii nividia orin nx koneessa ja offline
@@ -52,4 +69,5 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 25.10.2025 | R    | 1.5h | Prepping of the midterm presentation | 
 | 26.10.2025 | R, V | 3h | Finished writing the midterm presentation |
 | 27.10.2025 | R, V | 2h | Midterm presentation                      |
+| 03.11.2025 | R | 3h | Worked on whisper & bart AI wrote python code (working with realtime voice input) |
 
