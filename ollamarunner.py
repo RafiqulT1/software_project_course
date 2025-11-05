@@ -9,7 +9,7 @@ import os
 import glob
 import soundfile as sf
 import librosa
-import win32com.client
+from piper import PiperVoice, SynthesisConfig
 
 # Create temp directory for audio files
 TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_audio")
@@ -116,39 +116,62 @@ def speech_to_text(audio_file, whisper_model):
 
 def initialize_tts():
     """
-    Initialize Windows SAPI text-to-speech engine
+    Initialize Piper TTS engine with configuration
     """
     try:
-        print("[DEBUG] Initializing Windows SAPI...")
-        speaker = win32com.client.Dispatch("SAPI.SpVoice")
-        # Optional: Adjust voice settings
-        speaker.Volume = 100  # 0 to 100
-        speaker.Rate = 0     # -10 to 10
-        print("[DEBUG] SAPI initialized successfully")
-        return speaker
+        print("[DEBUG] Initializing Piper TTS...")
+        voice = PiperVoice.load("piper_models/fi_FI-harri-medium.onnx")
+        # Configure synthesis parameters
+        syn_config = SynthesisConfig(
+            length_scale=1.0,    # Normal speed
+            noise_scale=0.667,   # Default variation
+            noise_w_scale=0.8,   # Default speaking variation
+            volume=1.0,          # Full volume
+            normalize_audio=True  # Normalize output
+        )
+        print("[DEBUG] Piper TTS initialized successfully")
+        return voice, syn_config
     except Exception as e:
-        print(f"[DEBUG] Error initializing SAPI: {str(e)}")
-        return None
+        print(f"[DEBUG] Error initializing Piper TTS: {str(e)}")
+        return None, None
 
-def speak_text(speaker, text):
+def speak_text(voice_data, text):
     """
-    Convert text to speech using Windows SAPI (synchronous)
+    Convert text to speech using Piper TTS with WAV file
     """
-    print(f"[DEBUG] Starting speak_text with SAPI: {speaker is not None}")
+    voice, syn_config = voice_data if voice_data else (None, None)
+    print(f"[DEBUG] Starting speak_text with Piper: {voice is not None}")
     
-    if speaker is None:
-        print("[DEBUG] SAPI is None, reinitializing...")
-        speaker = initialize_tts()
+    if voice is None:
+        print("[DEBUG] Piper voice is None, reinitializing...")
+        voice_data = initialize_tts()
+        voice, syn_config = voice_data
     
     try:
         print("[DEBUG] Attempting to speak...")
         print(f"[DEBUG] Text length: {len(text)} characters")
-        speaker.Speak(text)  # Removed the async flag (1)
+        
+        # Create temporary WAV file for speech
+        temp_wav = os.path.join(TEMP_DIR, f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+        
+        # Generate speech to WAV file
+        with wave.open(temp_wav, "wb") as wav_file:
+            voice.synthesize_wav(text, wav_file, syn_config=syn_config)
+        
+        # Play the WAV file
+        data, sample_rate = sf.read(temp_wav)
+        sd.play(data, sample_rate, blocking=True)
+        
+        # Clean up temporary WAV file
+        try:
+            os.remove(temp_wav)
+        except Exception as e:
+            print(f"[DEBUG] Error removing temporary WAV: {e}")
+        
         print("[DEBUG] Speech completed")
-        return speaker
+        return voice_data
     except Exception as e:
         print(f"[DEBUG] Error in text-to-speech: {str(e)}")
-        print("[DEBUG] Attempting to reinitialize SAPI...")
         return initialize_tts()
 
 def voice_chat_conversation(model="llama2"):
@@ -161,7 +184,7 @@ def voice_chat_conversation(model="llama2"):
     
     print("[DEBUG] Setting up initial TTS engine")
     tts_engine = initialize_tts()
-    print(f"[DEBUG] Initial TTS engine state: {tts_engine is not None}")
+    print(f"[DEBUG] Initial TTS engine state: {tts_engine[0] is not None}")
     
     # Cleanup old recordings and load Whisper model
     cleanup_old_recordings()
@@ -196,9 +219,9 @@ def voice_chat_conversation(model="llama2"):
                     messages.append({'role': 'assistant', 'content': assistant_response})
                     
                     print(f"\nAssistant: {assistant_response}")
-                    print(f"[DEBUG] Current TTS engine state before speaking: {tts_engine is not None}")
+                    print(f"[DEBUG] Current TTS engine state before speaking: {tts_engine[0] is not None}")
                     tts_engine = speak_text(tts_engine, assistant_response)
-                    print(f"[DEBUG] TTS engine state after speaking: {tts_engine is not None}")
+                    print(f"[DEBUG] TTS engine state after speaking: {tts_engine[0] is not None}")
                 else:
                     print("No text was transcribed from the audio")
                     
