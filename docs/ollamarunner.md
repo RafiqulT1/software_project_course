@@ -1,8 +1,8 @@
-GitHub Copilot: # Ollama Voice Chat Documentation
+# Ollama Voice Chat Documentation
 
 ## Overview
 This script creates a voice-based chat interface with an LLM (Language Learning Model) using Ollama. It supports:
-- Voice input using microphone
+- **Dynamic Voice Input:** Listens until the user stops speaking.
 - Speech-to-text using Whisper
 - Text-to-speech using Piper TTS
 - Chat interaction with Ollama models
@@ -38,10 +38,6 @@ pip install emoji==1.7.0
 The emotion detection feature requires data from the NLTK library. Run this command once to download it:
 ```powershell
 python -c "import nltk; nltk.download('punkt')"
-```
-or install it with the python script:
-```powershell
-python download_nltk_data.py
 ```
 
 ### 4. Download Required Models
@@ -98,38 +94,44 @@ python ollamarunner.py
 ```
 
 4. Interact with the chat:
-   - Speak when prompted "Recording... Speak now"
-   - Wait for the assistant's voice response
+   - Speak when prompted "Listening..."
+   - The script will automatically detect when you stop talking.
+   - Wait for the assistant's voice response.
    - Ask questions about your past conversation, like "What did we talk about last time?"
-   - Press Ctrl+C to exit
+   - Press Ctrl+C to exit.
 
 ## Troubleshooting
 
 1. **Ollama Connection Error**
-   - Ensure Ollama is running
-   - Check if models are downloaded using `ollama list`
+   - Ensure Ollama is running.
+   - Check if models are downloaded using `ollama list`.
 
 2. **Emotion Detection Errors**
    - If you see an error like `module 'emoji' has no attribute 'UNICODE_EMOJI'`, ensure you have the correct version by running `pip install emoji==1.7.0 --upgrade`.
    - If you see `Resource punkt not found`, run the NLTK download command from the setup section.
 
 3. **Audio Recording Issues**
-   - Check microphone settings in Windows
-   - Verify microphone permissions
+   - **Speech Not Detected:** If the script doesn't seem to hear you, you need to calibrate the `silence_threshold`. Run the script and watch the `Mic Level (RMS)` value. Set `silence_threshold` to a value that is higher than your background noise but lower than your speaking volume.
+   - Check microphone settings in Windows.
+   - Verify microphone permissions.
 
 4. **TTS Issues**
-   - Verify Piper model files exist in `piper_models` directory
-   - Check file paths in `initialize_tts()`
-
-5. **Memory Issues**
-   - Consider using a smaller Whisper model
-   - Adjust recording duration in `record_audio()`
+   - Verify Piper model files exist in `piper_models` directory.
+   - Check file paths in `_initialize_tts()`.
 
 ## Configuration
+Key parameters can be adjusted directly in the `ollamarunner.py` script.
 
-Key parameters can be adjusted in the code:
-- Recording duration: `record_audio(duration=5)`
-- Audio sample rate: `sample_rate=16000`
-- TTS settings in `SynthesisConfig`
-- Whisper model size in `whisper.load_model("base")`
+### Assistant Personality
+- **`SYSTEM_PROMPT`**: Modify the `SYSTEM_PROMPT` string at the top of the `VoiceChatAssistant` class to change the LLM's behavior, personality, and instructions.
+
+### Voice Activity Detection (VAD)
+- **`_record_audio()` method signature**:
+  - `silence_threshold`: The RMS volume level that speech must cross to be detected. **This is the most important setting to calibrate for your microphone.**
+  - `silence_duration_s`: How many seconds of silence are required before the recording stops.
+  - `max_record_s`: A safety timeout to prevent infinitely long recordings.
+
+### Other Settings
+- **Whisper Model Size**: Change `"base"` in `self.whisper_model = whisper.load_model("base")` to other sizes like `"tiny"`, `"small"`, `"medium"`, or `"large"` depending on your hardware.
+- **TTS Settings**: Modify the `SynthesisConfig` in the `_initialize_tts()` method to change the voice's speed, volume, etc.
 

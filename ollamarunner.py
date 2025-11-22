@@ -13,314 +13,294 @@ from piper import PiperVoice, SynthesisConfig
 import logging
 import text2emotion as te
 
-# --- Setup Conversation Logger ---
-convo_logger = logging.getLogger('conversation')
-convo_logger.setLevel(logging.INFO)
-# Create a file handler to write to log.txt
-file_handler = logging.FileHandler('log.txt', mode='a', encoding='utf-8')
-# Create a logging format with timestamp
-formatter = logging.Formatter('%(asctime)s - %(message)s')
-file_handler.setFormatter(formatter)
-# Add the handler to the logger
-convo_logger.addHandler(file_handler)
+class VoiceChatAssistant:
+    # --- LLM INSTRUCTIONS ---
+    # Modify this string to change the assistant's personality and behavior.
+    SYSTEM_PROMPT = (
+        "You are a helpful, friendly, and empathetic voice assistant. "
+        "Keep your answers concise and to the point. Don't use any special formatting such as asterix etc."
+        "Analyze the user's emotion and respond in an appropriate and supportive manner."
+        "You will mostly engage with elder people."
+        "Use only one sentence for your answers" #to make answers short for debugging
+    )
 
-
-# Create temp directory for audio files
-TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_audio")
-os.makedirs(TEMP_DIR, exist_ok=True)
-
-def check_ollama_status():
-    """
-    Check if Ollama is running and has models installed
-    """
-    try:
-        response = ollama.list()
-        models = response.get('models', [])
-        if not models:
-            print("No models found. Please install a model using 'ollama pull modelname'")
-            print("Example: ollama pull llama2")
-            sys.exit(1)
-        return models
-    except ConnectionError:
-        print("Error: Cannot connect to Ollama. Please make sure it's running.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
-
-def record_audio(duration=5, sample_rate=16000):
-    """
-    Record audio from microphone
-    """
-    print("Recording... Speak now")
-    try:
-        recording = sd.rec(
-            int(duration * sample_rate),
-            samplerate=sample_rate,
-            channels=1,
-            dtype=np.int16
-        )
-        sd.wait()
-        print("Recording finished")
+    def __init__(self, ollama_model="llama2"):
+        """
+        Initializes the Voice Chat Assistant.
+        """
+        self.ollama_model = ollama_model
+        self.messages = []
+        self.temp_dir = self._setup_directories()
+        self.logger = self._setup_logging()
         
-        # Verify recording data
-        if np.any(recording):
-            print(f"Recording shape: {recording.shape}, dtype: {recording.dtype}")
-            return recording
-        else:
-            print("Warning: Recording appears to be empty")
-            return None
-    except Exception as e:
-        print(f"Error during recording: {str(e)}")
-        return None
+        print("Loading models, please wait...")
+        self.whisper_model = whisper.load_model("base")
+        self.tts_engine = self._initialize_tts()
+        print("Models loaded successfully.")
 
-def cleanup_old_recordings():
-    """
-    Clean up old WAV files from temp directory
-    """
-    for file in glob.glob(os.path.join(TEMP_DIR, "temp_recording_*.wav")):
+    def _setup_directories(self):
+        """Creates the temporary directory for audio files."""
+        temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_audio")
+        os.makedirs(temp_dir, exist_ok=True)
+        return temp_dir
+
+    def _setup_logging(self):
+        """Sets up the conversation logger."""
+        logger = logging.getLogger('conversation')
+        logger.setLevel(logging.INFO)
+        file_handler = logging.FileHandler('log.txt', mode='a', encoding='utf-8')
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        return logger
+
+    def _initialize_tts(self):
+        """Initializes the Piper TTS engine."""
         try:
-            os.remove(file)
+            print("[DEBUG] Initializing Piper TTS...")
+            voice = PiperVoice.load("piper_models/fi_FI-harri-medium.onnx")
+            syn_config = SynthesisConfig(length_scale=1.0, noise_scale=0.667, noise_w_scale=0.8, volume=1.0, normalize_audio=True)
+            print("[DEBUG] Piper TTS initialized successfully")
+            return voice, syn_config
         except Exception as e:
-            print(f"Warning: Could not remove old recording {file}: {e}")
+            print(f"[DEBUG] Error initializing Piper TTS: {e}")
+            return None, None
 
-def save_audio(recording, sample_rate=16000):
-    """
-    Save recording to WAV file with error checking
-    """
-    if recording is None:
-        print("Error: No recording data to save")
-        return None
+    def _record_audio(self, sample_rate=16000, chunk_size=1024, silence_threshold=40, silence_duration_s=2, max_record_s=15):
+        """
+        Records audio from the microphone until a period of silence is detected.
+        """
+        print("Listening... (waiting for speech)")
         
-    try:
-        filename = os.path.join(TEMP_DIR, f"temp_recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-        print(f"Saving audio to: {filename}")
-        
-        # Convert to float32 and normalize
-        audio_float = recording.astype(np.float32) / np.iinfo(np.int16).max
-        
-        # Save using soundfile
-        sf.write(filename, audio_float, sample_rate)
-            
-        # Verify file was created
-        if os.path.exists(filename):
-            print(f"Audio file saved successfully ({os.path.getsize(filename)} bytes)")
-            return os.path.abspath(filename)  # Return absolute path
-        else:
-            print("Error: File was not created")
-            return None
-    except Exception as e:
-        print(f"Error saving audio: {str(e)}")
-        return None
+        recorded_frames = []
+        is_speaking = False
+        silent_chunks = 0
+        num_silent_chunks_to_stop = int((silence_duration_s * sample_rate) / chunk_size)
+        max_chunks = int((max_record_s * sample_rate) / chunk_size)
 
-def speech_to_text(audio_file, whisper_model):
-    """
-    Convert speech to text using Whisper
-    """
-    try:
-        # Load and resample audio
-        audio, _ = librosa.load(audio_file, sr=16000)
-        
-        # Transcribe using loaded model
-        result = whisper_model.transcribe(audio)
-        return result["text"].strip()
-    except Exception as e:
-        print(f"Error in speech recognition: {str(e)}")
-        return None
-
-def initialize_tts():
-    """
-    Initialize Piper TTS engine with configuration
-    """
-    try:
-        print("[DEBUG] Initializing Piper TTS...")
-        voice = PiperVoice.load("piper_models/fi_FI-harri-medium.onnx")
-        # Configure synthesis parameters
-        syn_config = SynthesisConfig(
-            length_scale=1.0,    # Normal speed
-            noise_scale=0.667,   # Default variation
-            noise_w_scale=0.8,   # Default speaking variation
-            volume=1.0,          # Full volume
-            normalize_audio=True  # Normalize output
-        )
-        print("[DEBUG] Piper TTS initialized successfully")
-        return voice, syn_config
-    except Exception as e:
-        print(f"[DEBUG] Error initializing Piper TTS: {str(e)}")
-        return None, None
-
-def speak_text(voice_data, text):
-    """
-    Convert text to speech using Piper TTS with WAV file
-    """
-    voice, syn_config = voice_data if voice_data else (None, None)
-    print(f"[DEBUG] Starting speak_text with Piper: {voice is not None}")
-    
-    if voice is None:
-        print("[DEBUG] Piper voice is None, reinitializing...")
-        voice_data = initialize_tts()
-        voice, syn_config = voice_data
-    
-    try:
-        print("[DEBUG] Attempting to speak...")
-        print(f"[DEBUG] Text length: {len(text)} characters")
-        
-        # Create temporary WAV file for speech
-        temp_wav = os.path.join(TEMP_DIR, f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-        
-        # Generate speech to WAV file
-        with wave.open(temp_wav, "wb") as wav_file:
-            voice.synthesize_wav(text, wav_file, syn_config=syn_config)
-        
-        # Play the WAV file
-        data, sample_rate = sf.read(temp_wav)
-        sd.play(data, sample_rate, blocking=True)
-        
-        # Clean up temporary WAV file
         try:
+            with sd.InputStream(samplerate=sample_rate, channels=1, dtype=np.int16, blocksize=chunk_size) as stream:
+                for i in range(max_chunks):
+                    audio_chunk, overflowed = stream.read(chunk_size)
+                    if overflowed:
+                        print("Warning: Audio buffer overflowed")
+
+                    rms = np.sqrt(np.mean(audio_chunk.astype(np.float32)**2))
+
+                    # --- DEBUGGING: Print the live RMS value ---
+                    # This will print the current microphone volume on a single line.
+                    print(f"\rMic Level (RMS): {rms:.2f}", end="")
+
+                    if rms > silence_threshold:
+                        if not is_speaking:
+                            # Clear the RMS display line before printing status
+                            print("\r" + " " * 30 + "\r", end="") 
+                            print("Speech detected, recording...")
+                            is_speaking = True
+                        silent_chunks = 0
+                        recorded_frames.append(audio_chunk)
+                    elif is_speaking:
+                        silent_chunks += 1
+                        recorded_frames.append(audio_chunk)
+                        if silent_chunks > num_silent_chunks_to_stop:
+                            # Clear the RMS display line before printing status
+                            print("\r" + " " * 30 + "\r", end="")
+                            print("Silence detected, finishing recording.")
+                            break
+                
+                # Clear the RMS display line at the end
+                print("\r" + " " * 30 + "\r", end="")
+
+                if not recorded_frames:
+                    print("No speech detected within the time limit.")
+                    return None
+
+                print("Recording finished")
+                return np.concatenate(recorded_frames, axis=0)
+
+        except Exception as e:
+            print(f"Error during recording: {e}")
+            return None
+
+    def _save_audio(self, recording, sample_rate=16000):
+        """Saves the recorded audio to a temporary WAV file."""
+        if recording is None:
+            print("Error: No recording data to save")
+            return None
+        try:
+            filename = os.path.join(self.temp_dir, f"rec_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+            audio_float = recording.astype(np.float32) / np.iinfo(np.int16).max
+            sf.write(filename, audio_float, sample_rate)
+            if os.path.exists(filename):
+                return os.path.abspath(filename)
+        except Exception as e:
+            print(f"Error saving audio: {e}")
+        return None
+
+    def _speech_to_text(self, audio_file):
+        """Transcribes audio file to text using Whisper."""
+        try:
+            audio, _ = librosa.load(audio_file, sr=16000)
+            result = self.whisper_model.transcribe(audio)
+            return result["text"].strip()
+        except Exception as e:
+            print(f"Error in speech recognition: {e}")
+            return None
+
+    def _speak(self, text):
+        """Synthesizes and speaks the given text."""
+        voice, syn_config = self.tts_engine
+        if not voice:
+            print("[DEBUG] TTS engine not available.")
+            return
+        try:
+            temp_wav = os.path.join(self.temp_dir, f"speech_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+            with wave.open(temp_wav, "wb") as wav_file:
+                voice.synthesize_wav(text, wav_file, syn_config=syn_config)
+            data, sample_rate = sf.read(temp_wav)
+            sd.play(data, sample_rate, blocking=True)
             os.remove(temp_wav)
         except Exception as e:
-            print(f"[DEBUG] Error removing temporary WAV: {e}")
-        
-        print("[DEBUG] Speech completed")
-        return voice_data
-    except Exception as e:
-        print(f"[DEBUG] Error in text-to-speech: {str(e)}")
-        return initialize_tts()
+            print(f"[DEBUG] Error in text-to-speech: {e}")
 
-def detect_emotion(text):
-    """
-    Detects the dominant emotion from the given text.
-    """
-    # Ensure text is not empty or just whitespace
-    if not text or not text.strip():
-        return "Neutral"
-        
-    try:
-        emotions = te.get_emotion(text)
-        # Find the emotion with the highest score, if any score is above 0
-        if emotions and any(score > 0 for score in emotions.values()):
-            dominant_emotion = max(emotions, key=emotions.get)
-            return dominant_emotion
-    except Exception as e:
-        print(f"Could not detect emotion: {e}")
-    return "Neutral"
-
-def is_memory_question(text):
-    """
-    Checks if the user's input is a question about past conversations.
-    """
-    memory_keywords = [
-        "remember", "what did we talk about", "last time", "yesterday",
-        "previously", "in the past", "conversation history", "what did i say"
-    ]
-    text_lower = text.lower()
-    return any(keyword in text_lower for keyword in memory_keywords)
-
-def get_conversation_history(log_file_path='log.txt', num_lines=50):
-    """
-    Retrieves the last N lines from the conversation log file to use as context.
-    """
-    if not os.path.exists(log_file_path):
-        return "No conversation history found."
-    
-    try:
-        with open(log_file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        # Get the last num_lines, or all lines if the file is shorter
-        last_lines = lines[-num_lines:]
-        return "".join(last_lines)
-    except Exception as e:
-        print(f"Could not read conversation log: {e}")
-        return "Error reading conversation history."
-
-def voice_chat_conversation(model="llama2"):
-    """
-    Start an interactive voice chat session with the model
-    """
-    print(f"Starting voice chat with {model}")
-    print("Press Ctrl+C to exit")
-    messages = []
-    
-    print("[DEBUG] Setting up initial TTS engine")
-    tts_engine = initialize_tts()
-    print(f"[DEBUG] Initial TTS engine state: {tts_engine[0] is not None}")
-    
-    # Cleanup old recordings and load Whisper model
-    cleanup_old_recordings()
-    print("Loading Whisper model...")
-    whisper_model = whisper.load_model("base")
-    print("Whisper model loaded!")
-    
-    while True:
+    def _detect_emotion(self, text):
+        """Detects the dominant emotion from text."""
+        if not text or not text.strip():
+            return "Neutral"
         try:
-            print("\nListening...")
-            recording = record_audio()
-            if recording is None:
-                continue
-                
-            audio_file = save_audio(recording)
-            if audio_file is None:
-                continue
-            
-            try:
-                print(f"Transcribing audio file: {audio_file}")
-                text_input = speech_to_text(audio_file, whisper_model)
-                
-                if text_input:
-                    print(f"\nYou said: {text_input}")
-                    
-                    prompt_to_llm = ""
-                    
-                    # --- Memory Check ---
-                    if is_memory_question(text_input):
-                        print("Memory question detected. Checking logs...")
-                        history = get_conversation_history()
-                        # Create a prompt that asks the LLM to summarize based on history
-                        prompt_to_llm = f"Based on our recent conversation history below, please answer my question.\n\nHistory:\n{history}\n\nMy question is: {text_input}"
-                        convo_logger.info(f"User (Memory Question): {text_input}")
-                    else:
-                        # --- Emotion Detection ---
-                        emotion = detect_emotion(text_input)
-                        print(f"Detected Emotion: {emotion}")
-                        convo_logger.info(f"User: {text_input} [Emotion: {emotion}]")
-                        prompt_to_llm = f"The user seems to be feeling {emotion}. Respond to the following: {text_input}"
-
-                    response = ollama.chat(
-                        model=model,
-                        messages=[*messages, {'role': 'user', 'content': prompt_to_llm}]
-                    )
-                    assistant_response = response['message']['content']
-                    # Log the original user input for conversation history
-                    messages.append({'role': 'user', 'content': text_input})
-                    messages.append({'role': 'assistant', 'content': assistant_response})
-                    
-                    print(f"\nAssistant: {assistant_response}")
-                    convo_logger.info(f"Assistant: {assistant_response}")
-                    print(f"[DEBUG] Current TTS engine state before speaking: {tts_engine[0] is not None}")
-                    tts_engine = speak_text(tts_engine, assistant_response)
-                    print(f"[DEBUG] TTS engine state after speaking: {tts_engine[0] is not None}")
-                else:
-                    print("No text was transcribed from the audio")
-                    
-            except Exception as e:
-                print(f"Error in transcription: {str(e)}")
-                print(f"Audio file path: {os.path.abspath(audio_file)}")
-                print(f"File exists: {os.path.exists(audio_file)}")
-                print(f"File size: {os.path.getsize(audio_file) if os.path.exists(audio_file) else 'N/A'}")
-            
-        except KeyboardInterrupt:
-            print("\nExiting voice chat...")
-            cleanup_old_recordings()
-            break
+            emotions = te.get_emotion(text)
+            if emotions and any(score > 0 for score in emotions.values()):
+                return max(emotions, key=emotions.get)
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(f"Could not detect emotion: {e}")
+        return "Neutral"
+
+    def _is_memory_question(self, text):
+        """Checks if the text is a question about past conversations."""
+        memory_keywords = ["remember", "what did we talk about", "last time", "yesterday", "previously"]
+        return any(keyword in text.lower() for keyword in memory_keywords)
+
+    def _get_conversation_history(self, num_lines=50):
+        """Retrieves recent conversation history from the log."""
+        log_file_path = 'log.txt'
+        if not os.path.exists(log_file_path):
+            return "No conversation history found."
+        try:
+            with open(log_file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            return "".join(lines[-num_lines:])
+        except Exception as e:
+            print(f"Could not read conversation log: {e}")
+            return "Error reading history."
+
+    def _cleanup_recordings(self):
+        """Cleans up old temporary audio files."""
+        for file in glob.glob(os.path.join(self.temp_dir, "*.wav")):
+            try:
+                os.remove(file)
+            except Exception as e:
+                print(f"Warning: Could not remove old recording {file}: {e}")
+
+    def run(self):
+        """Starts the main conversation loop."""
+        print(f"Starting voice chat with {self.ollama_model}. Press Ctrl+C to exit.")
+        self._cleanup_recordings()
+
+        while True:
+            try:
+                print("\nListening...")
+                recording = self._record_audio()
+                if recording is None:
+                    continue
+
+                audio_file = self._save_audio(recording)
+                if not audio_file:
+                    continue
+
+                user_text = self._speech_to_text(audio_file)
+                if not user_text:
+                    print("No text was transcribed from the audio.")
+                    continue
+                
+                print(f"\nYou said: {user_text}")
+                
+                prompt_to_llm = ""
+                if self._is_memory_question(user_text):
+                    print("Memory question detected. Checking logs...")
+                    history = self._get_conversation_history()
+                    prompt_to_llm = f"Based on our recent conversation history below, please answer my question.\n\nHistory:\n{history}\n\nMy question is: {user_text}"
+                    self.logger.info(f"User (Memory Question): {user_text}")
+                else:
+                    emotion = self._detect_emotion(user_text)
+                    print(f"Detected Emotion: {emotion}")
+                    self.logger.info(f"User: {user_text} [Emotion: {emotion}]")
+                    prompt_to_llm = f"The user seems to be feeling {emotion}. Respond to the following: {user_text}"
+
+                # Prepare the full message list with the system prompt
+                full_messages = [
+                    {'role': 'system', 'content': self.SYSTEM_PROMPT},
+                    *self.messages,
+                    {'role': 'user', 'content': prompt_to_llm}
+                ]
+
+                response = ollama.chat(
+                    model=self.ollama_model,
+                    messages=full_messages
+                )
+                assistant_response = response['message']['content']
+                
+                self.messages.append({'role': 'user', 'content': user_text}) # Log original text
+                self.messages.append({'role': 'assistant', 'content': assistant_response})
+                
+                print(f"\nAssistant: {assistant_response}")
+                self.logger.info(f"Assistant: {assistant_response}")
+                
+                self._speak(assistant_response)
+
+            except KeyboardInterrupt:
+                print("\nExiting voice chat...")
+                self._cleanup_recordings()
+                break
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+
+def check_ollama_status():
+    """Checks if the Ollama service is running and models are available."""
+    try:
+        response = ollama.list()
+        if not response.get('models'):
+            print("No Ollama models found. Please run 'ollama pull <model_name>'")
+            sys.exit(1)
+        return response['models']
+    except Exception as e:
+        print(f"Ollama service not running or accessible: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # Check Ollama status and get available models
+    print("Checking Ollama status...")
     available_models = check_ollama_status()
-    default_model = available_models[0].model
-    print(f"Available models: {[model.model for model in available_models]}")
+
+    # --- Debugging: Print the raw model data from Ollama ---
+    print("\n--- Ollama Model Data ---")
+    print(available_models)
+    print("-------------------------\n")
+
+    if not available_models:
+        print("Error: No Ollama models found. Please run 'ollama pull <model_name>'")
+        sys.exit(1)
+
+    try:
+        # FIX: Access the .model attribute of the Model object, not the ['name'] key.
+        default_model = available_models[0].model
+        model_names = [model.model for model in available_models]
+        print(f"Available models: {model_names}")
+    except AttributeError:
+        print("Error: Could not find the '.model' attribute in the model data.")
+        print("Please check the debug output above to see the actual structure of the model data from your Ollama instance.")
+        sys.exit(1)
+    except IndexError:
+        print("Error: The list of available models is empty.")
+        sys.exit(1)
     
-    # Start voice chat
-    voice_chat_conversation(model=default_model)
+    assistant = VoiceChatAssistant(ollama_model=default_model)
+    assistant.run()
