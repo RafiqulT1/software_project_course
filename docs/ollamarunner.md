@@ -37,7 +37,7 @@ pip install emoji==1.7.0
 ### 3. Download NLTK Data
 The emotion detection feature requires data from the NLTK library. Run this command once to download it:
 ```powershell
-python -c "import nltk; nltk.download('punkt')"
+python -c "import nltk; nltk.download('punkt_tab')"
 ```
 or install it using the python script:
 ```powershell
