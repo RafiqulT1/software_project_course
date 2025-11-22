@@ -39,6 +39,10 @@ The emotion detection feature requires data from the NLTK library. Run this comm
 ```powershell
 python -c "import nltk; nltk.download('punkt')"
 ```
+or install it using the python script:
+```powershell
+python download_nltk_data.py
+```
 
 ### 4. Download Required Models
 
