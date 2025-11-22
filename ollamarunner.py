@@ -12,6 +12,9 @@ import librosa
 from piper import PiperVoice, SynthesisConfig
 import logging
 import text2emotion as te
+# --- NEW IMPORTS for Sound Classification ---
+import torch
+from transformers import AutoProcessor, AutoModelForAudioClassification
 
 class VoiceChatAssistant:
     # --- LLM INSTRUCTIONS ---
@@ -33,9 +36,22 @@ class VoiceChatAssistant:
         self.temp_dir = self._setup_directories()
         self.logger = self._setup_logging()
         
-        print("Loading models, please wait...")
+        print("Loading models, please wait... (This may take a moment)")
         self.whisper_model = whisper.load_model("base")
         self.tts_engine = self._initialize_tts()
+        
+        # --- NEW: Load Audio Classification Model ---
+        print("Loading audio classification model...")
+        try:
+            # FIX: Corrected the Hugging Face model identifier to the canonical name.
+            model_id = "MIT/ast-finetuned-audioset-10-10-0.4593"
+            self.audio_classifier_processor = AutoProcessor.from_pretrained(model_id)
+            self.audio_classifier_model = AutoModelForAudioClassification.from_pretrained(model_id)
+            print("Audio classification model loaded.")
+        except Exception as e:
+            print(f"Could not load audio classification model: {e}")
+            self.audio_classifier_model = None
+
         print("Models loaded successfully.")
 
     def _setup_directories(self):
@@ -86,14 +102,10 @@ class VoiceChatAssistant:
                         print("Warning: Audio buffer overflowed")
 
                     rms = np.sqrt(np.mean(audio_chunk.astype(np.float32)**2))
-
-                    # --- DEBUGGING: Print the live RMS value ---
-                    # This will print the current microphone volume on a single line.
                     print(f"\rMic Level (RMS): {rms:.2f}", end="")
 
                     if rms > silence_threshold:
                         if not is_speaking:
-                            # Clear the RMS display line before printing status
                             print("\r" + " " * 30 + "\r", end="") 
                             print("Speech detected, recording...")
                             is_speaking = True
@@ -103,12 +115,10 @@ class VoiceChatAssistant:
                         silent_chunks += 1
                         recorded_frames.append(audio_chunk)
                         if silent_chunks > num_silent_chunks_to_stop:
-                            # Clear the RMS display line before printing status
                             print("\r" + " " * 30 + "\r", end="")
                             print("Silence detected, finishing recording.")
                             break
                 
-                # Clear the RMS display line at the end
                 print("\r" + " " * 30 + "\r", end="")
 
                 if not recorded_frames:
@@ -120,6 +130,35 @@ class VoiceChatAssistant:
 
         except Exception as e:
             print(f"Error during recording: {e}")
+            return None
+
+    # --- NEW METHOD for Sound Classification ---
+    def _classify_audio_event(self, audio_data, sample_rate=16000):
+        """Classifies the primary sound event in an audio clip."""
+        if self.audio_classifier_model is None or audio_data is None:
+            return None
+        try:
+            # FIX: Squeeze the 2D audio array (n_samples, 1) into a 1D array (n_samples,)
+            # This is required by the audio classification model.
+            if audio_data.ndim > 1:
+                audio_data = np.squeeze(audio_data)
+
+            # Normalize audio from int16 to float32 for the model
+            audio_float = audio_data.astype(np.float32) / np.iinfo(np.int16).max
+            
+            inputs = self.audio_classifier_processor(audio_float, sampling_rate=sample_rate, return_tensors="pt")
+            with torch.no_grad():
+                logits = self.audio_classifier_model(**inputs).logits
+            
+            predicted_class_ids = torch.argmax(logits, dim=-1).item()
+            predicted_label = self.audio_classifier_model.config.id2label[predicted_class_ids]
+
+            scores = torch.nn.functional.softmax(logits, dim=-1)
+            predicted_score = scores[0][predicted_class_ids].item()
+
+            return {"label": predicted_label, "score": predicted_score}
+        except Exception as e:
+            print(f"Could not classify audio event: {e}")
             return None
 
     def _save_audio(self, recording, sample_rate=16000):
@@ -203,7 +242,7 @@ class VoiceChatAssistant:
 
     def run(self):
         """Starts the main conversation loop."""
-        print(f"Starting voice chat with {self.ollama_model}. Press Ctrl+C to exit.")
+        print(f"Starting voice chat with model '{self.ollama_model}'. Press Ctrl+C to exit.")
         self._cleanup_recordings()
 
         while True:
@@ -212,6 +251,38 @@ class VoiceChatAssistant:
                 recording = self._record_audio()
                 if recording is None:
                     continue
+
+                # --- Audio Event Classification Logic ---
+                event = self._classify_audio_event(recording)
+
+                # --- DEBUGGING: Print the classification result every time ---
+                if event:
+                    print(f"\n[DEBUG] Audio Event Classified As: {event['label']} (Score: {event['score']:.2f})")
+                else:
+                    print("\n[DEBUG] Audio event could not be classified.")
+
+                # --- NEW: Define a list of health-related events to react to ---
+                health_events = ['Cough', 'Throat clearing']
+                
+                # Check if the detected event is in our list and meets the confidence threshold.
+                if event and event['label'] in health_events and event['score'] > 0.7:
+                    print(f"Health Event Detected: {event['label']} (Score: {event['score']:.2f})")
+                    self.logger.info(f"User Event: {event['label']} Detected (Score: {event['score']:.2f})")
+                    
+                    # --- NEW: Store the response and add it to the conversation history ---
+                    assistant_response = "I noticed that. Are you feeling alright?"
+                    
+                    # Log the assistant's question to the console and file
+                    print(f"\nAssistant: {assistant_response}")
+                    self.logger.info(f"Assistant: {assistant_response}")
+                    
+                    # Add the assistant's question to the message history for LLM context
+                    self.messages.append({'role': 'assistant', 'content': assistant_response})
+                    
+                    # Speak the response
+                    self._speak(assistant_response)
+                    
+                    continue # Skip the rest of the loop and listen for the user's answer
 
                 audio_file = self._save_audio(recording)
                 if not audio_file:
@@ -236,7 +307,6 @@ class VoiceChatAssistant:
                     self.logger.info(f"User: {user_text} [Emotion: {emotion}]")
                     prompt_to_llm = f"The user seems to be feeling {emotion}. Respond to the following: {user_text}"
 
-                # Prepare the full message list with the system prompt
                 full_messages = [
                     {'role': 'system', 'content': self.SYSTEM_PROMPT},
                     *self.messages,
@@ -249,7 +319,7 @@ class VoiceChatAssistant:
                 )
                 assistant_response = response['message']['content']
                 
-                self.messages.append({'role': 'user', 'content': user_text}) # Log original text
+                self.messages.append({'role': 'user', 'content': user_text})
                 self.messages.append({'role': 'assistant', 'content': assistant_response})
                 
                 print(f"\nAssistant: {assistant_response}")
@@ -280,7 +350,6 @@ if __name__ == "__main__":
     print("Checking Ollama status...")
     available_models = check_ollama_status()
 
-    # --- Debugging: Print the raw model data from Ollama ---
     print("\n--- Ollama Model Data ---")
     print(available_models)
     print("-------------------------\n")
@@ -290,7 +359,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        # FIX: Access the .model attribute of the Model object, not the ['name'] key.
         default_model = available_models[0].model
         model_names = [model.model for model in available_models]
         print(f"Available models: {model_names}")
