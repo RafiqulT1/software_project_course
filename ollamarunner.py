@@ -36,8 +36,7 @@ class VoiceChatAssistant:
         self.temp_dir = self._setup_directories()
         self.logger = self._setup_logging()
         
-        # --- NEW: State tracking for health checks ---
-        self.health_check_pending = False
+        # --- State tracking for health events ---
         self.last_health_event = None
         
         print("Loading models, please wait... (This may take a moment)")
@@ -273,11 +272,10 @@ class VoiceChatAssistant:
                     print(f"Health Event Detected: {event['label']} (Score: {event['score']:.2f})")
                     self.logger.info(f"User Event: {event['label']} Detected (Score: {event['score']:.2f})")
                     
-                    # --- NEW: Set state before asking the question ---
-                    self.health_check_pending = True
+                    # Set the health event state
                     self.last_health_event = event['label']
                     
-                    assistant_response = f"I noticed that you had a {self.last_health_event}. Are you feeling alright?"
+                    assistant_response = f"I noticed that {self.last_health_event}. Are you feeling alright?"
                     
                     # Log the assistant's question to the console and file
                     print(f"\nAssistant: {assistant_response}")
@@ -303,30 +301,32 @@ class VoiceChatAssistant:
                 print(f"\nYou said: {user_text}")
                 
                 prompt_to_llm = ""
+                emotion = self._detect_emotion(user_text)
+                print(f"Detected Emotion: {emotion}")
                 
-                # --- NEW: Check for a pending health response first ---
-                if self.health_check_pending:
-                    print("Received response to health check.")
-                    emotion = self._detect_emotion(user_text)
-                    prompt_to_llm = (
-                        f"I previously detected a '{self.last_health_event}' and asked the user if they were feeling alright. "
-                        f"They now seem to be feeling {emotion} and have responded. "
-                        f"Based on this health context, reply to their message: '{user_text}'"
-                        f"Mention the health event '{self.last_health_event}' in your response."
-                    )
-                    self.logger.info(f"User (Health Response): {user_text} [Emotion: {emotion}]")
-                    # Reset the state after using it
-                    self.health_check_pending = False
-                    self.last_health_event = None
-                
-                elif self._is_memory_question(user_text):
+                negative_emotions = ['Sad', 'Angry', 'Fear']
+
+                # Prioritize memory questions as they are a distinct function
+                if self._is_memory_question(user_text):
                     print("Memory question detected. Checking logs...")
                     history = self._get_conversation_history()
                     prompt_to_llm = f"Based on our recent conversation history below, please answer my question.\n\nHistory:\n{history}\n\nMy question is: {user_text}"
                     self.logger.info(f"User (Memory Question): {user_text}")
+
+                # If a health event happened recently AND the user expresses a negative emotion, combine the context.
+                elif self.last_health_event and emotion in negative_emotions:
+                    print(f"Responding with context of recent health event: {self.last_health_event}")
+                    prompt_to_llm = (
+                        f"The user seems to be feeling {emotion}. A short while ago, I detected a '{self.last_health_event}'. "
+                        f"Please consider this health context in your empathetic response to their message: '{user_text}'"
+                        f"Use the health event {self.last_health_event} to provide supportive advice."
+                    )
+                    self.logger.info(f"User (Health Context): {user_text} [Emotion: {emotion}, Event: {self.last_health_event}]")
+                    # Reset the state after using it to avoid repeating the context
+                    self.last_health_event = None
+                
+                # Default case: Respond based on emotion alone
                 else:
-                    emotion = self._detect_emotion(user_text)
-                    print(f"Detected Emotion: {emotion}")
                     self.logger.info(f"User: {user_text} [Emotion: {emotion}]")
                     prompt_to_llm = f"The user seems to be feeling {emotion}. Respond to the following: {user_text}"
 
