@@ -1,0 +1,50 @@
+# Configuration for the Voice Chat Assistant
+
+# File and Directory Paths
+paths:
+  log_file: "log.txt"
+  temp_dir: "temp_audio"
+  piper_model: "piper_models/fi_FI-harri-medium.onnx"
+
+# Audio Recording and Playback Settings
+audio:
+  sample_rate: 16000
+  chunk_size: 1024
+  # --- CALIBRATE THIS FOR YOUR MIC ---
+  silence_threshold: 25 
+  silence_duration_s: 2
+  # Ensures even short sounds like coughs are captured fully.
+  min_record_s: 1.5 
+  max_record_s: 15
+
+# AI Model Identifiers and Settings
+models:
+  # The default Ollama model to use
+  ollama_model: "llama2" 
+  whisper_model_size: "base"
+  audio_classifier_model_id: "MIT/ast-finetuned-audioset-10-10-0.4593"
+
+# Conversation Logic and Prompts
+logic:
+  system_prompt: >
+    You are a helpful, friendly, and empathetic voice assistant.
+    Keep your answers concise and to the point. Don't use any special formatting such as asterix etc.
+    Analyze the user's emotion and respond in an appropriate and supportive manner.
+    You will mostly engage with elder people.
+    Use only one sentence for your answers.
+  memory_keywords:
+    - "remember"
+    - "what did we talk about"
+    - "last time"
+    - "yesterday"
+    - "previously"
+  health_events:
+    - "Cough"
+    - "Throat clearing"
+    - "Sneeze"
+  negative_emotions:
+    - "Sad"
+    - "Angry"
+    - "Fear"
+  # Lower this value if health events are detected but not acted upon.
+  health_event_confidence: 0.45
