@@ -74,4 +74,5 @@ Optiona: muunlaisten äänien tunnistaminen <yskii>
 | 04.11.2025 | M | 2h | Working on python script (ollamarunner.py) |
 | 05.11.2025 | M, R, V | 1h | Sync call |
 | 05.11.2025 | M | 2h | Working on python script (ollamarunner.py) |
+| 22.11.2025 | M | 4h | Working on python script (ollamarunner.py and related) |
 
