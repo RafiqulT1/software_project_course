@@ -36,6 +36,10 @@ class VoiceChatAssistant:
         self.temp_dir = self._setup_directories()
         self.logger = self._setup_logging()
         
+        # --- NEW: State tracking for health checks ---
+        self.health_check_pending = False
+        self.last_health_event = None
+        
         print("Loading models, please wait... (This may take a moment)")
         self.whisper_model = whisper.load_model("base")
         self.tts_engine = self._initialize_tts()
@@ -269,8 +273,11 @@ class VoiceChatAssistant:
                     print(f"Health Event Detected: {event['label']} (Score: {event['score']:.2f})")
                     self.logger.info(f"User Event: {event['label']} Detected (Score: {event['score']:.2f})")
                     
-                    # --- NEW: Store the response and add it to the conversation history ---
-                    assistant_response = "I noticed that. Are you feeling alright?"
+                    # --- NEW: Set state before asking the question ---
+                    self.health_check_pending = True
+                    self.last_health_event = event['label']
+                    
+                    assistant_response = f"I noticed that you had a {self.last_health_event}. Are you feeling alright?"
                     
                     # Log the assistant's question to the console and file
                     print(f"\nAssistant: {assistant_response}")
@@ -296,7 +303,23 @@ class VoiceChatAssistant:
                 print(f"\nYou said: {user_text}")
                 
                 prompt_to_llm = ""
-                if self._is_memory_question(user_text):
+                
+                # --- NEW: Check for a pending health response first ---
+                if self.health_check_pending:
+                    print("Received response to health check.")
+                    emotion = self._detect_emotion(user_text)
+                    prompt_to_llm = (
+                        f"I previously detected a '{self.last_health_event}' and asked the user if they were feeling alright. "
+                        f"They now seem to be feeling {emotion} and have responded. "
+                        f"Based on this health context, reply to their message: '{user_text}'"
+                        f"Mention the health event '{self.last_health_event}' in your response."
+                    )
+                    self.logger.info(f"User (Health Response): {user_text} [Emotion: {emotion}]")
+                    # Reset the state after using it
+                    self.health_check_pending = False
+                    self.last_health_event = None
+                
+                elif self._is_memory_question(user_text):
                     print("Memory question detected. Checking logs...")
                     history = self._get_conversation_history()
                     prompt_to_llm = f"Based on our recent conversation history below, please answer my question.\n\nHistory:\n{history}\n\nMy question is: {user_text}"
