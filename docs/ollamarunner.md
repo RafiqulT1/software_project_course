@@ -3,10 +3,11 @@
 ## Overview
 This script creates a voice-based chat interface with an LLM (Language Learning Model) using Ollama. It supports:
 - **Dynamic Voice Input:** Listens until the user stops speaking.
-- Speech-to-text using Whisper
-- Text-to-speech using Piper TTS
-- Chat interaction with Ollama models
+- Speech-to-text using Whisper.
+- Text-to-speech using Piper TTS.
+- Chat interaction with Ollama models.
 - **Emotion Detection:** Understands the user's emotion to provide empathetic responses.
+- **Audio Event Detection:** Recognizes non-speech sounds like coughing and throat clearing.
 - **Conversation Logging:** Saves the entire conversation to `log.txt`.
 - **Memory Recall:** Can answer questions about past conversations by summarizing the log.
 
@@ -32,12 +33,13 @@ pip install librosa
 pip install piper-tts
 pip install text2emotion
 pip install emoji==1.7.0
+pip install torch transformers
 ```
 
 ### 3. Download NLTK Data
 The emotion detection feature requires data from the NLTK library. Run this command once to download it:
 ```powershell
-python -c "import nltk; nltk.download('punkt_tab')"
+python -c "import nltk; nltk.download('punkt')"
 ```
 or install it using the python script:
 ```powershell
@@ -100,6 +102,7 @@ python ollamarunner.py
 4. Interact with the chat:
    - Speak when prompted "Listening..."
    - The script will automatically detect when you stop talking.
+   - If you cough or clear your throat, the assistant will react.
    - Wait for the assistant's voice response.
    - Ask questions about your past conversation, like "What did we talk about last time?"
    - Press Ctrl+C to exit.
@@ -119,7 +122,11 @@ python ollamarunner.py
    - Check microphone settings in Windows.
    - Verify microphone permissions.
 
-4. **TTS Issues**
+4. **Audio Event Detection Issues**
+   - **Model Download Fails:** Ensure you have a stable internet connection. The first time you run the script, it will download a model of several hundred megabytes.
+   - **Event Not Detected:** If the script doesn't react to a cough, watch the `[DEBUG] Audio Event Classified As:` output. You may need to lower the confidence threshold (e.g., from `0.7` to `0.6`) or add the detected label (e.g., 'Sneeze') to the `health_events` list in the `run()` method.
+
+5. **TTS Issues**
    - Verify Piper model files exist in `piper_models` directory.
    - Check file paths in `_initialize_tts()`.
 
@@ -128,6 +135,11 @@ Key parameters can be adjusted directly in the `ollamarunner.py` script.
 
 ### Assistant Personality
 - **`SYSTEM_PROMPT`**: Modify the `SYSTEM_PROMPT` string at the top of the `VoiceChatAssistant` class to change the LLM's behavior, personality, and instructions.
+
+### Audio Event Detection
+- **`run()` method**:
+  - `health_events`: Modify this list to include other sound labels you want the assistant to react to (e.g., `['Cough', 'Throat clearing', 'Sneeze']`).
+  - **Confidence Threshold**: Adjust the `event['score'] > 0.7` value to make the detection more or less sensitive.
 
 ### Voice Activity Detection (VAD)
 - **`_record_audio()` method signature**:
