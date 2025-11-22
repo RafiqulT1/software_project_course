@@ -6,6 +6,9 @@ This script creates a voice-based chat interface with an LLM (Language Learning 
 - Speech-to-text using Whisper
 - Text-to-speech using Piper TTS
 - Chat interaction with Ollama models
+- **Emotion Detection:** Understands the user's emotion to provide empathetic responses.
+- **Conversation Logging:** Saves the entire conversation to `log.txt`.
+- **Memory Recall:** Can answer questions about past conversations by summarizing the log.
 
 ## Setup Instructions
 
@@ -27,9 +30,21 @@ pip install openai-whisper
 pip install soundfile
 pip install librosa
 pip install piper-tts
+pip install text2emotion
+pip install emoji==1.7.0
 ```
 
-### 3. Download Required Models
+### 3. Download NLTK Data
+The emotion detection feature requires data from the NLTK library. Run this command once to download it:
+```powershell
+python -c "import nltk; nltk.download('punkt')"
+```
+or install it with the python script:
+```powershell
+python download_nltk_data.py
+```
+
+### 4. Download Required Models
 
 #### Ollama Model
 ```powershell
@@ -51,7 +66,7 @@ curl -L -o piper_models/fi_FI-harri-medium.json https://huggingface.co/rhasspy/p
 
 Available voices can be found at: https://huggingface.co/rhasspy/piper-voices
 
-### 4. Additional Requirements
+### 5. Additional Requirements
 - FFmpeg is required for Whisper. Install using:
 ```powershell
 winget install Gyan.FFmpeg
@@ -65,6 +80,7 @@ software_project_course/
 │   ├── fi_FI-harri-medium.onnx
 │   └── fi_FI-harri-medium.json
 ├── temp_audio/          # Created automatically
+├── log.txt              # Created automatically for conversation history
 └── ollamarunner.py
 ```
 
@@ -84,6 +100,7 @@ python ollamarunner.py
 4. Interact with the chat:
    - Speak when prompted "Recording... Speak now"
    - Wait for the assistant's voice response
+   - Ask questions about your past conversation, like "What did we talk about last time?"
    - Press Ctrl+C to exit
 
 ## Troubleshooting
@@ -92,15 +109,19 @@ python ollamarunner.py
    - Ensure Ollama is running
    - Check if models are downloaded using `ollama list`
 
-2. **Audio Recording Issues**
+2. **Emotion Detection Errors**
+   - If you see an error like `module 'emoji' has no attribute 'UNICODE_EMOJI'`, ensure you have the correct version by running `pip install emoji==1.7.0 --upgrade`.
+   - If you see `Resource punkt not found`, run the NLTK download command from the setup section.
+
+3. **Audio Recording Issues**
    - Check microphone settings in Windows
    - Verify microphone permissions
 
-3. **TTS Issues**
+4. **TTS Issues**
    - Verify Piper model files exist in `piper_models` directory
    - Check file paths in `initialize_tts()`
 
-4. **Memory Issues**
+5. **Memory Issues**
    - Consider using a smaller Whisper model
    - Adjust recording duration in `record_audio()`
 

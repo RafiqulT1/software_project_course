@@ -10,6 +10,20 @@ import glob
 import soundfile as sf
 import librosa
 from piper import PiperVoice, SynthesisConfig
+import logging
+import text2emotion as te
+
+# --- Setup Conversation Logger ---
+convo_logger = logging.getLogger('conversation')
+convo_logger.setLevel(logging.INFO)
+# Create a file handler to write to log.txt
+file_handler = logging.FileHandler('log.txt', mode='a', encoding='utf-8')
+# Create a logging format with timestamp
+formatter = logging.Formatter('%(asctime)s - %(message)s')
+file_handler.setFormatter(formatter)
+# Add the handler to the logger
+convo_logger.addHandler(file_handler)
+
 
 # Create temp directory for audio files
 TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_audio")
@@ -174,6 +188,52 @@ def speak_text(voice_data, text):
         print(f"[DEBUG] Error in text-to-speech: {str(e)}")
         return initialize_tts()
 
+def detect_emotion(text):
+    """
+    Detects the dominant emotion from the given text.
+    """
+    # Ensure text is not empty or just whitespace
+    if not text or not text.strip():
+        return "Neutral"
+        
+    try:
+        emotions = te.get_emotion(text)
+        # Find the emotion with the highest score, if any score is above 0
+        if emotions and any(score > 0 for score in emotions.values()):
+            dominant_emotion = max(emotions, key=emotions.get)
+            return dominant_emotion
+    except Exception as e:
+        print(f"Could not detect emotion: {e}")
+    return "Neutral"
+
+def is_memory_question(text):
+    """
+    Checks if the user's input is a question about past conversations.
+    """
+    memory_keywords = [
+        "remember", "what did we talk about", "last time", "yesterday",
+        "previously", "in the past", "conversation history", "what did i say"
+    ]
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in memory_keywords)
+
+def get_conversation_history(log_file_path='log.txt', num_lines=50):
+    """
+    Retrieves the last N lines from the conversation log file to use as context.
+    """
+    if not os.path.exists(log_file_path):
+        return "No conversation history found."
+    
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        # Get the last num_lines, or all lines if the file is shorter
+        last_lines = lines[-num_lines:]
+        return "".join(last_lines)
+    except Exception as e:
+        print(f"Could not read conversation log: {e}")
+        return "Error reading conversation history."
+
 def voice_chat_conversation(model="llama2"):
     """
     Start an interactive voice chat session with the model
@@ -210,15 +270,33 @@ def voice_chat_conversation(model="llama2"):
                 if text_input:
                     print(f"\nYou said: {text_input}")
                     
+                    prompt_to_llm = ""
+                    
+                    # --- Memory Check ---
+                    if is_memory_question(text_input):
+                        print("Memory question detected. Checking logs...")
+                        history = get_conversation_history()
+                        # Create a prompt that asks the LLM to summarize based on history
+                        prompt_to_llm = f"Based on our recent conversation history below, please answer my question.\n\nHistory:\n{history}\n\nMy question is: {text_input}"
+                        convo_logger.info(f"User (Memory Question): {text_input}")
+                    else:
+                        # --- Emotion Detection ---
+                        emotion = detect_emotion(text_input)
+                        print(f"Detected Emotion: {emotion}")
+                        convo_logger.info(f"User: {text_input} [Emotion: {emotion}]")
+                        prompt_to_llm = f"The user seems to be feeling {emotion}. Respond to the following: {text_input}"
+
                     response = ollama.chat(
                         model=model,
-                        messages=[*messages, {'role': 'user', 'content': text_input}]
+                        messages=[*messages, {'role': 'user', 'content': prompt_to_llm}]
                     )
                     assistant_response = response['message']['content']
+                    # Log the original user input for conversation history
                     messages.append({'role': 'user', 'content': text_input})
                     messages.append({'role': 'assistant', 'content': assistant_response})
                     
                     print(f"\nAssistant: {assistant_response}")
+                    convo_logger.info(f"Assistant: {assistant_response}")
                     print(f"[DEBUG] Current TTS engine state before speaking: {tts_engine[0] is not None}")
                     tts_engine = speak_text(tts_engine, assistant_response)
                     print(f"[DEBUG] TTS engine state after speaking: {tts_engine[0] is not None}")
