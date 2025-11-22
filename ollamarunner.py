@@ -12,7 +12,6 @@ import librosa
 from piper import PiperVoice, SynthesisConfig
 import logging
 import text2emotion as te
-# --- NEW IMPORTS for Sound Classification ---
 import torch
 from transformers import AutoProcessor, AutoModelForAudioClassification
 
@@ -43,10 +42,8 @@ class VoiceChatAssistant:
         self.whisper_model = whisper.load_model("base")
         self.tts_engine = self._initialize_tts()
         
-        # --- NEW: Load Audio Classification Model ---
         print("Loading audio classification model...")
         try:
-            # FIX: Corrected the Hugging Face model identifier to the canonical name.
             model_id = "MIT/ast-finetuned-audioset-10-10-0.4593"
             self.audio_classifier_processor = AutoProcessor.from_pretrained(model_id)
             self.audio_classifier_model = AutoModelForAudioClassification.from_pretrained(model_id)
@@ -135,7 +132,6 @@ class VoiceChatAssistant:
             print(f"Error during recording: {e}")
             return None
 
-    # --- NEW METHOD for Sound Classification ---
     def _classify_audio_event(self, audio_data, sample_rate=16000):
         """Classifies the primary sound event in an audio clip."""
         if self.audio_classifier_model is None or audio_data is None:
@@ -264,7 +260,6 @@ class VoiceChatAssistant:
                 else:
                     print("\n[DEBUG] Audio event could not be classified.")
 
-                # --- NEW: Define a list of health-related events to react to ---
                 health_events = ['Cough', 'Throat clearing']
                 
                 # Check if the detected event is in our list and meets the confidence threshold.
