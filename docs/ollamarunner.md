@@ -1,4 +1,5 @@
-# Ollama Voice Chat Documentation
+
+# Finnish Spoken Robot Dialogue Documentation (Ollama based voice assistant)
 
 ## Overview
 This script creates a voice-based chat interface with an LLM (Language Learning Model) using Ollama. It supports:
